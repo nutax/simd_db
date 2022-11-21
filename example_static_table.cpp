@@ -18,34 +18,27 @@
 // -------------------------------------
 
 /* CONSTANTS */
-#define CACHE_LINE 64
-#define VEC_SIZE 32
 #define MAX_PLAYERS 30
 #define MAX_DOORS 100
 
-/* STATIC ALLOCATIONS */
+/* COLUMNS */
+COLUMN(xpos, float);
+COLUMN(ypos, float);
+COLUMN(zpos, float);
+COLUMN(r2, float);
+COLUMN(team, uint32_t);
+COLUMN(open, uint32_t);
+COLUMN(other, uint32_t);
+
+/* TABLES */
 // Players
-enum
-{
-    PLAYER_X,
-    PLAYER_Y,
-    PLAYER_Z,
-    PLAYER_TEAM,
-    PLAYER_OTHER_DATA
-};
-simd_db::static_table<CACHE_LINE, VEC_SIZE, MAX_PLAYERS, float, float, float, uint32_t, uint32_t> players;
+TABLE256(players, MAX_PLAYERS, col_xpos, col_ypos, col_zpos, col_team, col_other);
 
 // Doors
-enum
-{
-    DOOR_X,
-    DOOR_Y,
-    DOOR_Z,
-    DOOR_R2,
-    DOOR_TEAM,
-    DOOR_OPEN
-};
-simd_db::static_table<CACHE_LINE, VEC_SIZE, MAX_DOORS, float, float, float, float, uint32_t, uint32_t> doors;
+TABLE256(doors, MAX_DOORS, col_xpos, col_ypos, col_zpos, col_r2, col_team, col_open);
+
+/* VIEWS */
+VIEW(with_position, std::ref(table_players), std::ref(table_doors));
 
 // -------------------------------------
 // PROCEDURES
@@ -81,41 +74,41 @@ void generate()
 
     for (int i = 0; i < MAX_PLAYERS; ++i)
     {
-        players.create<PLAYER_X>() = (float)(rand() % 5);
-        players.create<PLAYER_Y>() = (float)(rand() % 5);
-        players.create<PLAYER_Z>() = (float)(rand() % 5);
-        players.create<PLAYER_TEAM>() = (uint32_t)(rand() % 3);
-        players.create();
+        table_players.create<col_xpos>() = (float)(rand() % 5);
+        table_players.create<col_ypos>() = (float)(rand() % 5);
+        table_players.create<col_zpos>() = (float)(rand() % 5);
+        table_players.create<col_team>() = (uint32_t)(rand() % 3);
+        table_players.create();
     }
     for (int i = 0; i < MAX_DOORS; ++i)
     {
-        doors.create<DOOR_X>() = (float)(rand() % 5);
-        doors.create<DOOR_Y>() = (float)(rand() % 5);
-        doors.create<DOOR_Z>() = (float)(rand() % 5);
-        doors.create<DOOR_R2>() = (float)(rand() % 25);
-        doors.create<DOOR_TEAM>() = (uint32_t)(rand() % 3);
-        doors.create<DOOR_OPEN>() = 0;
-        doors.create();
+        table_doors.create<col_xpos>() = (float)(rand() % 5);
+        table_doors.create<col_ypos>() = (float)(rand() % 5);
+        table_doors.create<col_zpos>() = (float)(rand() % 5);
+        table_doors.create<col_r2>() = (float)(rand() % 25);
+        table_doors.create<col_team>() = (uint32_t)(rand() % 3);
+        table_doors.create<col_open>() = 0;
+        table_doors.create();
     }
 }
 
 void open_doors()
 {
-    for (int i = 0; i < doors.size(); i += doors.v_step<DOOR_X>())
+    for (int i = 0; i < table_doors.size(); i += table_doors.v_step<col_xpos>())
     {
-        __m256 vdx = _mm256_load_ps(doors.column<DOOR_X>() + i);
-        __m256 vdy = _mm256_load_ps(doors.column<DOOR_Y>() + i);
-        __m256 vdz = _mm256_load_ps(doors.column<DOOR_Z>() + i);
-        __m256 vdr = _mm256_load_ps(doors.column<DOOR_R2>() + i);
-        __m256i vdt = _mm256_load_si256((__m256i *)(doors.column<DOOR_TEAM>() + i));
+        __m256 vdx = _mm256_load_ps(table_doors.column<col_xpos>() + i);
+        __m256 vdy = _mm256_load_ps(table_doors.column<col_ypos>() + i);
+        __m256 vdz = _mm256_load_ps(table_doors.column<col_zpos>() + i);
+        __m256 vdr = _mm256_load_ps(table_doors.column<col_r2>() + i);
+        __m256i vdt = _mm256_load_si256((__m256i *)(table_doors.column<col_team>() + i));
         __m256i vdo = _mm256_setzero_si256();
 
-        for (int j = 0; j < players.size(); ++j)
+        for (int j = 0; j < table_players.size(); ++j)
         {
-            __m256 vpx = _mm256_broadcast_ss(players.column<PLAYER_X>() + j);
-            __m256 vpy = _mm256_broadcast_ss(players.column<PLAYER_Y>() + j);
-            __m256 vpz = _mm256_broadcast_ss(players.column<PLAYER_Z>() + j);
-            __m256i vpt = _mm256_set1_epi32(players.column<PLAYER_TEAM>()[j]);
+            __m256 vpx = _mm256_broadcast_ss(table_players.column<col_xpos>() + j);
+            __m256 vpy = _mm256_broadcast_ss(table_players.column<col_ypos>() + j);
+            __m256 vpz = _mm256_broadcast_ss(table_players.column<col_zpos>() + j);
+            __m256i vpt = _mm256_set1_epi32(table_players.column<col_team>()[j]);
 
             __m256 xdiff = _mm256_sub_ps(vdx, vpx);
             __m256 ydiff = _mm256_sub_ps(vdy, vpy);
@@ -133,6 +126,6 @@ void open_doors()
 
             vdo = _mm256_or_si256(vdo, result_mask);
         }
-        _mm256_store_si256((__m256i *)(doors.column<DOOR_OPEN>() + i), vdo);
+        _mm256_store_si256((__m256i *)(table_doors.column<col_open>() + i), vdo);
     }
 }

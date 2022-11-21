@@ -1,5 +1,31 @@
 #include <cstdint>
 #include <tuple>
+#include <functional>
+
+#define COLUMN(_name, _type) \
+    struct col_##_name       \
+    {                        \
+        using type = _type;  \
+        _type data;          \
+    }
+
+#define TABLE128(_name, _capacity, ...)                                               \
+    struct tab_##_name : public simd_db::static_table<64, 16, _capacity, __VA_ARGS__> \
+    {                                                                                 \
+    };                                                                                \
+    tab_##_name table_##_name
+#define TABLE256(_name, _capacity, ...)                                               \
+    struct tab_##_name : public simd_db::static_table<64, 32, _capacity, __VA_ARGS__> \
+    {                                                                                 \
+    };                                                                                \
+    tab_##_name table_##_name
+#define TABLE512(_name, _capacity, ...)                                               \
+    struct tab_##_name : public simd_db::static_table<64, 64, _capacity, __VA_ARGS__> \
+    {                                                                                 \
+    };                                                                                \
+    tab_##_name table_##_name
+
+#define VIEW(_name, ...) auto _name = std::make_tuple(__VA_ARGS__)
 
 namespace simd_db
 {
@@ -43,16 +69,16 @@ namespace simd_db
         }
 
     public:
-        template <std::size_t I>
+        template <typename T>
         auto *column()
         {
-            return std::get<I>(_columns).data;
+            return reinterpret_cast<typename T::type *>(std::get<column_template<T>>(_columns).data);
         }
 
-        template <std::size_t I>
+        template <typename T>
         auto &create()
         {
-            return std::get<I>(_columns)[_size];
+            return std::get<column_template<T>>(_columns)[_size].data;
         }
 
         std::size_t create()
@@ -70,10 +96,11 @@ namespace simd_db
             return _size;
         }
 
-        template <std::size_t I>
+        template <typename T>
         static constexpr std::size_t v_step()
         {
-            return VEC_SIZE / sizeof(typename std::tuple_element<I, decltype(_columns)>::type::type);
+            return VEC_SIZE / sizeof(typename T::type);
         }
     };
+
 };
